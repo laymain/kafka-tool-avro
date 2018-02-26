@@ -62,6 +62,7 @@ public class AvroCustomMessageDecorator implements ICustomMessageDecorator {
         if (configurationDialogOpened.compareAndSet(false, true)) {
             // Double check
             if (SCHEMA_REGISTY_ENDPOINTS.containsKey(zookeeperHost)) {
+                configurationDialogOpened.set(false);
                 return SCHEMA_REGISTY_ENDPOINTS.getProperty(zookeeperHost);
             }
             SwingUtilities.invokeLater(() -> {
@@ -69,10 +70,10 @@ public class AvroCustomMessageDecorator implements ICustomMessageDecorator {
                     String endpoint = JOptionPane.showInputDialog(String.format("Enter schema registry endpoint for %s", zookeeperHost));
                     if (endpoint != null && !endpoint.isEmpty()) {
                         SCHEMA_REGISTY_ENDPOINTS.setProperty(zookeeperHost, endpoint);
-                        configurationDialogOpened.set(false);
                         saveProperties(SCHEMA_REGISTY_ENDPOINTS);
                     }
                 }
+                configurationDialogOpened.set(false);
             });
         }
         return null;
