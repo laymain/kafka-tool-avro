@@ -4,7 +4,6 @@ import com.kafkatool.external.ICustomMessageDecorator;
 import com.kafkatool.ui.MainFrame;
 import io.confluent.kafka.schemaregistry.client.CachedSchemaRegistryClient;
 import io.confluent.kafka.serializers.KafkaAvroDeserializer;
-import org.apache.avro.generic.GenericRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
