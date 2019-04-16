@@ -47,8 +47,11 @@ public class AvroCustomMessageDecorator implements ICustomMessageDecorator {
         try {
             deserializers.computeIfAbsent(schemaRegistryEndpoint, key -> new KafkaAvroDeserializer(new CachedSchemaRegistryClient(key, 10)));
             KafkaAvroDeserializer deserializer = deserializers.get(schemaRegistryEndpoint);
-            GenericRecord record = (GenericRecord)deserializer.deserialize(topic, bytes);
-            return record.toString();
+            Object deserializedObject = deserializer.deserialize(topic, bytes);
+            if (deserializedObject instanceof String) {
+                return deserializedObject;
+            }
+            return ((GenericRecord)deserializedObject).toString();            
         } catch (Exception e) {
             LOGGER.error("Cannot decorate message", e);
             return String.format("Error: %s", e);
