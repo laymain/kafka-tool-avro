@@ -13,12 +13,22 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.net.URL;
+import java.net.URLDecoder;
+import java.nio.charset.Charset;
 import java.nio.file.Paths;
+import java.util.AbstractMap;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 public class AvroCustomMessageDecorator implements ICustomMessageDecorator {
 
@@ -26,7 +36,8 @@ public class AvroCustomMessageDecorator implements ICustomMessageDecorator {
     private static final String DISPLAY_NAME = "Avro";
     private static final String PROPERTIES_FILE = String.join(File.separator, System.getProperty("user.home"), ".com.laymain.kafkatool.plugin.avro.properties");
     private static final Properties SCHEMA_REGISTY_ENDPOINTS = loadProperties();
-
+    private static final String CONFIGURATION_PROPERTIS_DELIMITER = ".";
+    
     private final ConcurrentMap<String, KafkaAvroDeserializer> deserializers = new ConcurrentHashMap<>();
     private final AtomicBoolean configurationDialogOpened = new AtomicBoolean(false);
     private final AtomicBoolean menuBarInjectionDone = new AtomicBoolean(false);
@@ -40,11 +51,18 @@ public class AvroCustomMessageDecorator implements ICustomMessageDecorator {
     public String decorate(String zookeeperHost, String brokerHost, String topic, long partitionId, long offset, byte[] bytes, Map<String, String> map) {
         injectMenuItem();
         String schemaRegistryEndpoint = getSchemaRegistryEndpoint(zookeeperHost);
+        
+        
+        
         if (schemaRegistryEndpoint == null || schemaRegistryEndpoint.isEmpty()) {
             return "Missing schema registry endpoint";
         }
         try {
-            deserializers.computeIfAbsent(schemaRegistryEndpoint, key -> new KafkaAvroDeserializer(new CachedSchemaRegistryClient(key, 10)));
+        	Map<String, String> config = getSchemaRegistryClientConfig(zookeeperHost);
+        	
+        	LOGGER.info("Schem registry client config: " + config.toString());
+        	
+            deserializers.computeIfAbsent(schemaRegistryEndpoint, key -> new KafkaAvroDeserializer(new CachedSchemaRegistryClient(key, 10, config)));
             KafkaAvroDeserializer deserializer = deserializers.get(schemaRegistryEndpoint);
             return String.valueOf(deserializer.deserialize(topic, bytes));
         } catch (Exception e) {
@@ -65,10 +83,44 @@ public class AvroCustomMessageDecorator implements ICustomMessageDecorator {
             }
             SwingUtilities.invokeLater(() -> {
                 if (!SCHEMA_REGISTY_ENDPOINTS.containsKey(zookeeperHost)) {
-                    String endpoint = JOptionPane.showInputDialog(String.format("Enter schema registry endpoint for %s", zookeeperHost));
-                    if (endpoint != null && !endpoint.isEmpty()) {
-                        SCHEMA_REGISTY_ENDPOINTS.setProperty(zookeeperHost, endpoint);
-                        saveProperties(SCHEMA_REGISTY_ENDPOINTS);
+                    String endpointInput = JOptionPane.showInputDialog(String.format("Enter schema registry endpoint for %s", zookeeperHost));
+                    if (endpointInput != null && !endpointInput.isEmpty()) {
+                    	
+                    	try {
+                    		String endpoint = null;
+                    		Map<String, String> config = null;
+                    		int queryDelimiterIndex = endpointInput.indexOf("?");
+                    		if(queryDelimiterIndex != -1) {
+                    			endpoint = endpointInput.substring(0, queryDelimiterIndex);
+                    			String query = endpointInput.substring(queryDelimiterIndex+1);
+                    			config = Arrays.stream(query.split("&"))
+                    				.map(param -> param.split("="))
+                    				.filter(paramTokens -> paramTokens.length > 1)
+                    				.map(paramTokens -> {
+                    					try {
+                    						return new String[]{URLDecoder.decode(paramTokens[0], Charset.defaultCharset().toString()),
+                    								URLDecoder.decode(paramTokens[1],Charset.defaultCharset().toString())
+                    							};
+                    					} catch(Exception e) {
+                    						throw new RuntimeException(e);
+                    					}
+                    				})
+                    				.collect(Collectors.toMap(paramTokens -> paramTokens[0], paramTokens -> paramTokens[1]));
+                    		} else {
+                    			endpoint = endpointInput;
+                    		}
+                    		
+                    		LOGGER.info(String.format("Endpoint: %s, config: %s", endpoint, config));
+                    		
+                            SCHEMA_REGISTY_ENDPOINTS.setProperty(zookeeperHost, endpoint);
+                            if(Objects.nonNull(config)) {
+                            	config.forEach((key, value) -> SCHEMA_REGISTY_ENDPOINTS.setProperty(zookeeperHost + CONFIGURATION_PROPERTIS_DELIMITER + key , value));
+                            }
+                            saveProperties(SCHEMA_REGISTY_ENDPOINTS);                    		
+                    	} catch(Exception e) {
+                            LOGGER.error("Cannot process URL", e.toString());
+                            JOptionPane.showMessageDialog(MainFrame.getInstance(), e.toString(), "Cannot process URL", JOptionPane.ERROR_MESSAGE);
+                    	}
                     }
                 }
                 configurationDialogOpened.set(false);
@@ -76,7 +128,18 @@ public class AvroCustomMessageDecorator implements ICustomMessageDecorator {
         }
         return null;
     }
-
+    
+    protected Map<String, String> getSchemaRegistryClientConfig(String zookeeperHost) {
+    	return SCHEMA_REGISTY_ENDPOINTS.stringPropertyNames().stream()
+    		.filter(propertyName -> propertyName.startsWith(zookeeperHost + CONFIGURATION_PROPERTIS_DELIMITER))
+    		.map(propertyName ->  {
+    			 return new AbstractMap.SimpleEntry<String, String>(
+    					 propertyName.substring((zookeeperHost + CONFIGURATION_PROPERTIS_DELIMITER).length()), 
+    					 SCHEMA_REGISTY_ENDPOINTS.getProperty(propertyName));
+    		}).collect(Collectors.toMap(entry -> entry.getKey(), entry -> entry.getValue()));
+    		
+    }
+    
     private static Properties loadProperties() {
         Properties properties = new Properties();
         try {
