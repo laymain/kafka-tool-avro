@@ -36,3 +36,11 @@ After that, the messages/keys will be decorated using the Avro decorator.
 The first time you will use the decorator on a Kafka connection, you will be asked for the schema registry endpoint.
 (ex: http://schema-registry.mydomain.com:8081)
 These endpoints are stored in a configuration file that you can edit through the menu _Tools > Avro plugin settings..._
+
+Client configuration
+-----
+If you like to configure the schema registry client with any of the supported params ([io.confluent.kafka.schemaregistry.client.SchemaRegistryClientConfig](https://github.com/confluentinc/schema-registry/blob/master/client/src/main/java/io/confluent/kafka/schemaregistry/client/SchemaRegistryClientConfig.java)), just add to the registry enpoint a query param per each client config param to set.
+
+For example, if you want to configure client to use authentication from the URL, the endpoint URL shall be like this:
+
+    http://usr:pwd@localhost:8081/?basic.auth.credentials.source=URL
